@@ -1,0 +1,23 @@
+{
+    "id": "chuck",
+    "version": "1.0.0",
+    "name": "Eagle Labs Chuck",
+    "documentationURL": "https://github.com/zendril/eagle-labs-linux/tree/main/features/eagle-labs/chuck",
+    "description": "Installs the Chuck tool with Eagle Labs governance and persistent caching.",
+    "options": {},
+    "containerEnv": {
+        "CHUCK_CACHE_DIR": "/usr/local/share/chuck-cache"
+    },
+    "mounts": [
+        {
+            "source": "eagle-chuck-cache",
+            "target": "/usr/local/share/chuck-cache",
+            "type": "volume"
+        }
+    ],
+    "postStartCommand": "/usr/local/bin/compliance-notifier-chuck",
+    "entrypoint": "/usr/local/bin/entrypoint-chuck",
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+}

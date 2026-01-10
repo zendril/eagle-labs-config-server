@@ -7,10 +7,15 @@
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
 			"version": "22"
-		}
+		},
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+		"./features/eagle-labs/gemini-cli": {}
 	},
+	// Set Claude Code configuration directory
 	"containerEnv": {
 		"CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+		"GEMINI_CONFIG_DIR": "/home/vscode/.gemini",
+		// Point the compliance scripts to the sidecar service
 		"POLICY_HOST": "http://policy-server:3000"
 	},
 	// Features to add to the dev container. More info: https://containers.dev/features.
@@ -18,6 +23,7 @@
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	"forwardPorts": [3000],
+	"appPort": [ "3000:3000" ],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude /home/vscode/.config/gemini",
@@ -29,5 +35,12 @@
 	// "customizations": {},
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	"mounts": [
+		// Persist Claude Code config (auth tokens, settings) in ~/.claude directory
+		// Shared across all devcontainers for convenience with trusted repos
+		"source=claude-code-config,target=/home/vscode/.claude,type=volume",
+		// Persist Gemini CLI config (auth tokens, settings)
+		"source=gemini-cli-config,target=/home/vscode/.gemini,type=volume"
+	],
 	"remoteUser": "vscode"
 }

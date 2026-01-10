@@ -1,4 +1,6 @@
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const hostname = '0.0.0.0';
 const port = 3000;
@@ -63,6 +65,25 @@ const server = http.createServer((req, res) => {
                 message: 'Chuck Policy check successful'
             };
             res.end(JSON.stringify(policy));
+        });
+    } else if (req.method === 'GET' && req.url === '/artifacts/chuck-bundle.tar.gz') {
+        const filePath = path.join(__dirname, '../public/artifacts/chuck-bundle.tar.gz');
+        
+        fs.stat(filePath, (err, stats) => {
+            if (err || !stats.isFile()) {
+                console.error('Artifact not found:', filePath);
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'text/plain');
+                res.end('Not Found');
+                return;
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/gzip');
+            res.setHeader('Content-Length', stats.size);
+            
+            const readStream = fs.createReadStream(filePath);
+            readStream.pipe(res);
         });
     } else {
         res.statusCode = 404;
