@@ -85,6 +85,46 @@ const server = http.createServer((req, res) => {
             const readStream = fs.createReadStream(filePath);
             readStream.pipe(res);
         });
+    } else if (req.method === 'POST' && req.url === '/telemetry') {
+        readBody((data) => {
+            try {
+                if (!data) {
+                    throw new Error('No data received');
+                }
+                const payload = JSON.parse(data);
+                const { sessionId, markers, os, config } = payload;
+                
+                let projectName = 'Unknown';
+                if (config) {
+                    try {
+                        const configObj = JSON.parse(config);
+                        projectName = configObj.name || 'Unknown';
+                    } catch (configErr) {
+                        console.error('Failed to parse config string:', configErr.message);
+                    }
+                }
+
+                const logEntry = {
+                    timestamp: new Date().toISOString(),
+                    projectName,
+                    sessionId,
+                    installedFeatures: markers,
+                    osDistro: os
+                };
+
+                console.log('Telemetry Log:', JSON.stringify(logEntry, null, 2));
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ status: 'received' }));
+
+            } catch (e) {
+                console.error('Failed to parse telemetry payload:', e.message);
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+        });
     } else {
         res.statusCode = 404;
         res.setHeader('Content-Type', 'text/plain');
