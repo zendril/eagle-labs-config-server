@@ -9,12 +9,11 @@
 			"version": "22"
 		},
 		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
-		"./features/eagle-labs/gemini-cli": {}
+		"ghcr.io/zendril/features/gemini-cli:1": {}
 	},
 	// Set Claude Code configuration directory
 	"containerEnv": {
 		"CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
-		"GEMINI_CONFIG_DIR": "/home/vscode/.gemini",
 		// Point the compliance scripts to the sidecar service
 		"POLICY_HOST": "http://policy-server:3000"
 	},
@@ -39,8 +38,6 @@
 		// Persist Claude Code config (auth tokens, settings) in ~/.claude directory
 		// Shared across all devcontainers for convenience with trusted repos
 		"source=claude-code-config,target=/home/vscode/.claude,type=volume",
-		// Persist Gemini CLI config (auth tokens, settings)
-		"source=gemini-cli-config,target=/home/vscode/.gemini,type=volume"
 	],
 	"remoteUser": "vscode"
 }

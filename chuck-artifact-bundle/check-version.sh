@@ -24,32 +24,113 @@ if [ "$QUIET_MODE" = "false" ]; then
     echo "Fetching policy from $POLICY_URL..."
 fi
 
-# Telemetry Collection
+# Telemetry Collection (Consolidated)
 collect_telemetry() {
     local ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     local user=${USER:-"unknown"}
     local host=$(hostname)
     local mid="unknown"
-    [ -f /etc/machine-id ] && mid=$(cat /etc/machine-id)
-    local os="unknown"
-    [ -f /etc/os-release ] && os=$(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')
+    [ -f /etc/machine-id ] && mid=$(cat /etc/machine-id | tr -d '\n')
+    local os_pretty="unknown"
+    [ -f /etc/os-release ] && os_pretty=$(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')
     local wsl=${WSL_DISTRO_NAME:-"none"}
     local ci=${CI:-"false"}
-    
-    # Escape quotes for JSON safety (basic)
-    os=$(echo "$os" | sed 's/"/\\"/g')
-    
-    echo "{
-        \"feature\": \"chuck\",
-        \"timestamp\": \"$ts\",
-        \"username\": \"$user\",
-        \"hostname\": \"$host\",
-        \"machine_id\": \"$mid\",
-        \"os_pretty_name\": \"$os\",
-        \"wsl_distro\": \"$wsl\",
-        \"ci_env\": \"$ci\",
-        \"client_version\": \"$CHUCK_VER\"
-    }"
+
+    # Collect full OS info from /etc/os-release
+    local os_full=""
+    [ -f /etc/os-release ] && os_full=$(cat /etc/os-release)
+
+    # Collect feature markers (installed features with versions)
+    local markers_json="{}"
+    local markers_dir="/usr/local/share/eagle-labs/markers"
+    if [ -d "$markers_dir" ] && [ -n "$(find "$markers_dir" -type f 2>/dev/null)" ]; then
+        markers_json=$(jq -n "{}" 2>/dev/null || echo "{}")
+        if command -v jq >/dev/null 2>&1; then
+            # Use jq to safely build markers object
+            for m in "$markers_dir"/*; do
+                if [ -f "$m" ]; then
+                    local marker_name=$(basename "$m")
+                    local marker_version=$(cat "$m" | tr -d '\n')
+                    markers_json=$(echo "$markers_json" | jq --arg name "$marker_name" --arg version "$marker_version" '. + {($name): $version}')
+                fi
+            done
+        fi
+    fi
+
+    # Collect devcontainer.json config
+    local config=""
+    local project_name="Unknown"
+    local config_file=$(find /workspaces -name "devcontainer.json" -type f 2>/dev/null | head -1)
+    if [ -n "$config_file" ] && [ -f "$config_file" ]; then
+        config=$(cat "$config_file")
+        # Extract project name from config
+        project_name=$(grep -o '"name"\s*:\s*"[^"]*"' "$config_file" 2>/dev/null | cut -d'"' -f4)
+        [ -z "$project_name" ] && project_name="Unknown"
+    fi
+
+    # Use jq to build the JSON if available (proper escaping), otherwise use printf with proper escaping
+    if command -v jq >/dev/null 2>&1; then
+        jq -n \
+            --arg feature "chuck" \
+            --arg timestamp "$ts" \
+            --arg username "$user" \
+            --arg hostname "$host" \
+            --arg machine_id "$mid" \
+            --arg os_pretty_name "$os_pretty" \
+            --arg wsl_distro "$wsl" \
+            --arg ci_env "$ci" \
+            --arg client_version "$CHUCK_VER" \
+            --arg sessionId "$host" \
+            --arg os "$os_full" \
+            --arg config "$config" \
+            --arg projectName "$project_name" \
+            --argjson markers "$markers_json" \
+            '{
+                feature: $feature,
+                timestamp: $timestamp,
+                username: $username,
+                hostname: $hostname,
+                machine_id: $machine_id,
+                os_pretty_name: $os_pretty_name,
+                wsl_distro: $wsl_distro,
+                ci_env: $ci_env,
+                client_version: $client_version,
+                sessionId: $sessionId,
+                os: $os,
+                markers: $markers,
+                config: $config,
+                projectName: $projectName
+            }'
+    else
+        # Fallback: escape quotes and newlines manually
+        ts=$(printf '%s\n' "$ts" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        user=$(printf '%s\n' "$user" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        host=$(printf '%s\n' "$host" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        mid=$(printf '%s\n' "$mid" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        os_pretty=$(printf '%s\n' "$os_pretty" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        wsl=$(printf '%s\n' "$wsl" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        ci=$(printf '%s\n' "$ci" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        os_full=$(printf '%s\n' "$os_full" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n')
+        config=$(printf '%s\n' "$config" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n')
+        project_name=$(printf '%s\n' "$project_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+        echo "{
+            \"feature\": \"chuck\",
+            \"timestamp\": \"$ts\",
+            \"username\": \"$user\",
+            \"hostname\": \"$host\",
+            \"machine_id\": \"$mid\",
+            \"os_pretty_name\": \"$os_pretty\",
+            \"wsl_distro\": \"$wsl\",
+            \"ci_env\": \"$ci\",
+            \"client_version\": \"$CHUCK_VER\",
+            \"sessionId\": \"$host\",
+            \"os\": \"$os_full\",
+            \"markers\": $markers_json,
+            \"config\": \"$config\",
+            \"projectName\": \"$project_name\"
+        }"
+    fi
 }
 
 # Determine Chuck Version for Telemetry

@@ -49,15 +49,35 @@ const server = http.createServer((req, res) => {
             if (req.method === 'POST' && data) {
                 try {
                     const telemetry = JSON.parse(data);
-                    console.log('Telemetry received (Chuck):', JSON.stringify(telemetry, null, 2));
+
+                    // Consolidated telemetry logging (includes fields from both old and new systems)
+                    const logEntry = {
+                        timestamp: new Date().toISOString(),
+                        feature: telemetry.feature || 'chuck',
+                        sessionId: telemetry.sessionId || telemetry.hostname || 'unknown',
+                        projectName: telemetry.projectName || 'Unknown',
+                        installedFeatures: telemetry.markers || {},
+                        osInfo: {
+                            pretty_name: telemetry.os_pretty_name || 'unknown',
+                            wsl_distro: telemetry.wsl_distro || 'none',
+                            full_os: telemetry.os || 'unknown'
+                        },
+                        governanceInfo: {
+                            username: telemetry.username,
+                            machine_id: telemetry.machine_id,
+                            client_version: telemetry.client_version,
+                            ci_env: telemetry.ci_env
+                        }
+                    };
+
+                    console.log('Consolidated Telemetry (Chuck):', JSON.stringify(logEntry, null, 2));
                 } catch (e) {
                     console.error('Failed to parse telemetry JSON:', e.message);
                 }
             }
-            
+
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            // Assuming Chuck follows similar versioning for this mock
             const policy = {
                 latest_version: '1.5.0',
                 release_date: '2026-01-01',
@@ -84,46 +104,6 @@ const server = http.createServer((req, res) => {
             
             const readStream = fs.createReadStream(filePath);
             readStream.pipe(res);
-        });
-    } else if (req.method === 'POST' && req.url === '/telemetry') {
-        readBody((data) => {
-            try {
-                if (!data) {
-                    throw new Error('No data received');
-                }
-                const payload = JSON.parse(data);
-                const { sessionId, markers, os, config } = payload;
-                
-                let projectName = 'Unknown';
-                if (config) {
-                    try {
-                        const configObj = JSON.parse(config);
-                        projectName = configObj.name || 'Unknown';
-                    } catch (configErr) {
-                        console.error('Failed to parse config string:', configErr.message);
-                    }
-                }
-
-                const logEntry = {
-                    timestamp: new Date().toISOString(),
-                    projectName,
-                    sessionId,
-                    installedFeatures: markers,
-                    osDistro: os
-                };
-
-                console.log('Telemetry Log:', JSON.stringify(logEntry, null, 2));
-
-                res.statusCode = 200;
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ status: 'received' }));
-
-            } catch (e) {
-                console.error('Failed to parse telemetry payload:', e.message);
-                res.statusCode = 400;
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ error: 'Invalid JSON' }));
-            }
         });
     } else {
         res.statusCode = 404;
