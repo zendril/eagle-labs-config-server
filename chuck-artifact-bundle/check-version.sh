@@ -68,6 +68,12 @@ collect_telemetry() {
         [ -z "$project_name" ] && project_name="Unknown"
     fi
 
+    # Collect bundle version (NEW)
+    local bundle_version="unknown"
+    if [ -f "/usr/local/share/eagle-labs/chuck-bundle-version" ]; then
+        bundle_version=$(cat /usr/local/share/eagle-labs/chuck-bundle-version | tr -d '\n')
+    fi
+
     # Use jq to build the JSON if available (proper escaping), otherwise use printf with proper escaping
     if command -v jq >/dev/null 2>&1; then
         jq -n \
@@ -80,6 +86,7 @@ collect_telemetry() {
             --arg wsl_distro "$wsl" \
             --arg ci_env "$ci" \
             --arg client_version "$CHUCK_VER" \
+            --arg bundle_version "$bundle_version" \
             --arg sessionId "$host" \
             --arg os "$os_full" \
             --arg config "$config" \
@@ -95,6 +102,7 @@ collect_telemetry() {
                 wsl_distro: $wsl_distro,
                 ci_env: $ci_env,
                 client_version: $client_version,
+                bundle_version: $bundle_version,
                 sessionId: $sessionId,
                 os: $os,
                 markers: $markers,
@@ -102,6 +110,12 @@ collect_telemetry() {
                 projectName: $projectName
             }'
     else
+        # Collect bundle version for fallback path
+        bundle_version="unknown"
+        if [ -f "/usr/local/share/eagle-labs/chuck-bundle-version" ]; then
+            bundle_version=$(cat /usr/local/share/eagle-labs/chuck-bundle-version | tr -d '\n')
+        fi
+
         # Fallback: escape quotes and newlines manually
         ts=$(printf '%s\n' "$ts" | sed 's/\\/\\\\/g; s/"/\\"/g')
         user=$(printf '%s\n' "$user" | sed 's/\\/\\\\/g; s/"/\\"/g')
@@ -113,6 +127,7 @@ collect_telemetry() {
         os_full=$(printf '%s\n' "$os_full" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n')
         config=$(printf '%s\n' "$config" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n')
         project_name=$(printf '%s\n' "$project_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        bundle_version=$(printf '%s\n' "$bundle_version" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
         echo "{
             \"feature\": \"chuck\",
@@ -124,6 +139,7 @@ collect_telemetry() {
             \"wsl_distro\": \"$wsl\",
             \"ci_env\": \"$ci\",
             \"client_version\": \"$CHUCK_VER\",
+            \"bundle_version\": \"$bundle_version\",
             \"sessionId\": \"$host\",
             \"os\": \"$os_full\",
             \"markers\": $markers_json,
@@ -158,7 +174,7 @@ fi
 # Extract version and release date using basic grep/cut
 LATEST_ALLOWED_VERSION=$(echo "$POLICY_RESPONSE" | grep -o '"latest_version":"[^"]*"' | cut -d'"' -f4)
 RELEASE_DATE=$(echo "$POLICY_RESPONSE" | grep -o '"release_date":"[^"]*"' | cut -d'"' -f4)
-GRACE_PERIOD_DAYS=30 
+GRACE_PERIOD_DAYS=30
 
 if [ "$QUIET_MODE" = "false" ]; then
     echo "Policy: Latest Allowed Version: $LATEST_ALLOWED_VERSION"
@@ -172,55 +188,56 @@ get_days_diff() {
     echo $(( (d2 - d1) / 86400 ))
 }
 
-# Check current chuck version
-if command -v chuck >/dev/null 2>&1; then
-    CHUCK_VER=$(chuck version)
+# NEW: Check current bundle version (instead of chuck binary version)
+CURRENT_BUNDLE_VERSION="unknown"
+if [ -f "/usr/local/share/eagle-labs/chuck-bundle-version" ]; then
+    CURRENT_BUNDLE_VERSION=$(cat /usr/local/share/eagle-labs/chuck-bundle-version | tr -d '\n')
+fi
+
+if [ "$QUIET_MODE" = "false" ]; then
+    echo "Detected Bundle Version: $CURRENT_BUNDLE_VERSION"
+fi
+
+# Check if bundle version matches policy requirement
+if [ "$CURRENT_BUNDLE_VERSION" = "$LATEST_ALLOWED_VERSION" ]; then
     if [ "$QUIET_MODE" = "false" ]; then
-        echo "Detected Chuck Version: $CHUCK_VER"
+        echo "Status: COMPLIANT"
     fi
-    
-    if [ "$CHUCK_VER" = "$LATEST_ALLOWED_VERSION" ]; then
-        if [ "$QUIET_MODE" = "false" ]; then
-            echo "Status: COMPLIANT"
-        fi
-        exit 0
-    else
-        if [ "$QUIET_MODE" = "false" ]; then
-            echo "Status: NON-COMPLIANT (Expected $LATEST_ALLOWED_VERSION)"
-        fi
-        
-        # Calculate how old the release is
-        CURRENT_DATE=$(date +%Y-%m-%d)
-        DAYS_SINCE_RELEASE=$(get_days_diff "$RELEASE_DATE" "$CURRENT_DATE")
-
-        # Write state for entrypoint/notifier
-        mkdir -p /etc/eagle-labs
-        echo "$DAYS_SINCE_RELEASE" > /etc/eagle-labs/chuck-days
-        echo "$RELEASE_DATE" > /etc/eagle-labs/chuck-date
-        chmod 644 /etc/eagle-labs/chuck-days /etc/eagle-labs/chuck-date
-        
-        if [ "$QUIET_MODE" = "false" ]; then
-            echo "Days since release: $DAYS_SINCE_RELEASE"
-        fi
-
-        if [ "$DAYS_SINCE_RELEASE" -lt 15 ]; then
-             # < 15 Days: Silent / Log Only
-            [ "$QUIET_MODE" = "false" ] && echo "Grace Period: Update available but not yet enforced."
-            exit 0
-        elif [ "$DAYS_SINCE_RELEASE" -lt 30 ]; then
-             # 15-30 Days: Gentle Warning
-            [ "$QUIET_MODE" = "false" ] && echo "WARNING: Your version of Chuck is outdated. Please update soon."
-            exit 0
-        elif [ "$DAYS_SINCE_RELEASE" -ge 30 ] && [ "$DAYS_SINCE_RELEASE" -lt 45 ]; then
-            [ "$QUIET_MODE" = "false" ] && echo "URGENT: You are nearing the mandatory update deadline."
-            exit 0
-        else
-             # > 45 Days: Hard Block
-            [ "$QUIET_MODE" = "false" ] && echo "CRITICAL: Mandatory update required. Access Denied."
-            exit 1
-        fi
-    fi
+    exit 0
 else
-    echo "Chuck tool not found!"
-    exit 1
+    if [ "$QUIET_MODE" = "false" ]; then
+        echo "Status: NON-COMPLIANT (Expected $LATEST_ALLOWED_VERSION, Have $CURRENT_BUNDLE_VERSION)"
+    fi
+
+    # Calculate how old the release is
+    CURRENT_DATE=$(date +%Y-%m-%d)
+    DAYS_SINCE_RELEASE=$(get_days_diff "$RELEASE_DATE" "$CURRENT_DATE")
+    TOOL_NAME="Chuck" # Used in notice messages
+
+    # Create notice files directly based on the number of days.
+    # The entrypoint will simply display any file that is found.
+    mkdir -p /etc/eagle-labs
+    rm -f /etc/eagle-labs/chuck-notice-* # Clean up old notices first
+
+    if [ "$DAYS_SINCE_RELEASE" -ge 45 ]; then
+        # > 45 Days: Hard Block
+        if [ "$QUIET_MODE" = "false" ]; then
+            echo "CRITICAL: Mandatory update required. Access Denied."
+        fi
+        # Create a tombstone message for the entrypoint to display
+        printf "═[ \033[31m☠  DISABLED \033[0m]══════════════════════════════════════════════════════════════════\n· %s updated %s (DISABLED)\n· Your version is %s days out of compliance and has been disabled.\n· ⚡ Rebuild container to fix: 'Dev Containers: Rebuild Container'\n" "$TOOL_NAME" "$RELEASE_DATE" "$DAYS_SINCE_RELEASE" > /etc/eagle-labs/chuck-removed.msg
+        exit 1
+    elif [ "$DAYS_SINCE_RELEASE" -ge 30 ]; then
+        # 30-44 Days: Urgent Warning (CRITICAL visual)
+        printf "═[ \033[38;5;208m!  CRITICAL \033[0m]═══════════════════════════════════════════════════════════════════\n· %s updated %s (CRITICAL)\n· Your version is %s days out of compliance\n· ⚡ Update available, Rebuild with: 'Dev Containers: Rebuild Container'\n" "$TOOL_NAME" "$RELEASE_DATE" "$DAYS_SINCE_RELEASE" > /etc/eagle-labs/chuck-notice-30-44
+    elif [ "$DAYS_SINCE_RELEASE" -ge 15 ]; then
+        # 15-29 Days: Warning
+        printf "═[ \033[33m⚠  WARNING \033[0m]═══════════════════════════════════════════════════════════════════\n· %s updated %s (WARNING)\n· Your version is %s days out of compliance\n· ⚡ Update available, Rebuild with: 'Dev Containers: Rebuild Container'\n" "$TOOL_NAME" "$RELEASE_DATE" "$DAYS_SINCE_RELEASE" > /etc/eagle-labs/chuck-notice-15-29
+    else
+        # 0-14 Days: Info
+        printf "═[ \033[34mℹ  INFO \033[0m]═══════════════════════════════════════════════════════════════════════\n· %s updated %s (INFO)\n· Your version is %s days out of compliance\n· ⚡ Update available, Rebuild with: 'Dev Containers: Rebuild Container'\n" "$TOOL_NAME" "$RELEASE_DATE" "$DAYS_SINCE_RELEASE" > /etc/eagle-labs/chuck-notice-0-14
+    fi
+
+    # Exit 0 to indicate success (no hard block)
+    exit 0
 fi
