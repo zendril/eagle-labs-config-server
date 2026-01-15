@@ -14,8 +14,6 @@
 	// Set Claude Code configuration directory
 	"containerEnv": {
 		"CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
-		// Point the compliance scripts to the sidecar service
-		"POLICY_HOST": "http://policy-server:3000"
 	},
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
