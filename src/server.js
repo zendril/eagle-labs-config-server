@@ -40,6 +40,16 @@ function getLatestBundle(artifactsDir) {
     }
 }
 
+const CATALOG = {
+    "chuck": {
+        "latest_version": "1.5.6",
+        "grace_period_days": 0
+    },
+    "reggie": {
+        "latest_version": "2.0.0",
+        "grace_period_days": 30
+    }
+};
 
 const server = http.createServer((req, res) => {
     console.log(`Received request: ${req.method} ${req.url}`);
@@ -61,44 +71,20 @@ const server = http.createServer((req, res) => {
                 console.log('--- WARDEN BATCH TELEMETRY ---');
                 console.log(JSON.stringify(telemetry, null, 2));
 
-                const features = telemetry.features || [];
-                let status = 'PASS';
-                let message = 'All features compliant.';
-                let statusCode = 200;
-
-                const chuck = features.find(f => f.name === 'chuck');
-                if (chuck && chuck.version === '1.5.2') {
-                    status = 'BLOCK';
-                    message = 'CRITICAL: Chuck v1.5.2 has a known security vulnerability. Rebuild required.';
-                    statusCode = 403;
-                }
-
-                res.statusCode = statusCode;
+                // Clean response - just return catalog and status PASS
+                // Client (Warden) handles the enforcement based on catalog
+                res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({
-                    status: status,
-                    message: message,
+                    status: 'PASS',
+                    message: 'Policy check complete.',
+                    catalog: CATALOG,
                     server_time: new Date().toISOString()
                 }));
             } catch (e) {
                 res.statusCode = 400;
                 res.end('Invalid JSON');
             }
-        });
-    }
-
-
-    else if (req.url === '/policy/reggie/latest') {
-        readBody((data) => {
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ latest_version: '2', message: 'Legacy Reggie Policy' }));
-        });
-    } else if (req.url === '/policy/chuck/latest') {
-        readBody((data) => {
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ latest_version: '1.5.5', message: 'Legacy Chuck Policy' }));
         });
     } else if (req.method === 'GET' && req.url === '/artifacts/chuck-bundle.tar.gz') {
         const filePath = path.join(__dirname, '../public/artifacts/chuck-bundle.tar.gz');
@@ -137,4 +123,3 @@ const server = http.createServer((req, res) => {
 server.listen(port, hostname, () => {
     console.log(`Policy Server running at http://${hostname}:${port}/`);
 });
-
