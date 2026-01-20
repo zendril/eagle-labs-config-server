@@ -41,13 +41,9 @@ function getLatestBundle(artifactsDir) {
 }
 
 const CATALOG = {
-    "chuck": {
-        "latest_version": "1.5.6",
-        "grace_period_days": 0
-    },
     "reggie": {
-        "latest_version": "2.0.0",
-        "grace_period_days": 30
+        "latest_version": "1.0.31",
+        "grace_period_days": 0
     }
 };
 
@@ -64,7 +60,7 @@ const server = http.createServer((req, res) => {
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/plain');
         res.end('OK');
-    } else if (req.method === 'POST' && req.url === '/policy/batch-check') {
+    } else if (req.method === 'POST' && req.url === '/config/catalog') {
         readBody((data) => {
             try {
                 const telemetry = JSON.parse(data);
@@ -77,7 +73,7 @@ const server = http.createServer((req, res) => {
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({
                     status: 'PASS',
-                    message: 'Policy check complete.',
+                    message: 'Catalog creation complete.',
                     catalog: CATALOG,
                     server_time: new Date().toISOString()
                 }));
@@ -121,5 +117,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(port, hostname, () => {
-    console.log(`Policy Server running at http://${hostname}:${port}/`);
+    console.log(`Config Server running at http://${hostname}:${port}/`);
 });
