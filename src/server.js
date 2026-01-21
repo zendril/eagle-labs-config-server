@@ -42,7 +42,7 @@ function getLatestBundle(artifactsDir) {
 
 const CATALOG = {
     "reggie": {
-        "latest_version": "1.0.31",
+        "latest_version": "1.0.33",
         "grace_period_days": 0
     }
 };
